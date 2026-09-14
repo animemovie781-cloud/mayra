@@ -1,0 +1,14 @@
+package com.ameya.intelligence.ui.screens.mcp.remote
+
+import androidx.compose.runtime.Composable
+import com.ameya.intelligence.ui.screens.shared.ComingSoonScreen
+
+@Composable
+fun RemoteMcpScreen(
+    onNavigateBack: () -> Unit
+) {
+    ComingSoonScreen(
+        title = "MCP Servers",
+        onNavigateBack = onNavigateBack
+    )
+}
