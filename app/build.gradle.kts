@@ -33,16 +33,11 @@ android {
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
-
-        // Limit APK to arm64-v8a to significantly reduce size (strips x86, x86_64, and 32-bit ARM native libraries from GeckoView)
-        ndk {
-            abiFilters.add("arm64-v8a")
-        }
     }
 
     splits {
         abi {
-            isEnable = false
+            isEnable = true
             reset()
             include("armeabi-v7a", "arm64-v8a")
             isUniversalApk = false
