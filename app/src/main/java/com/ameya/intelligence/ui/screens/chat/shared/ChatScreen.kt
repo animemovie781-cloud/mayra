@@ -99,6 +99,9 @@ fun ChatScreen(
     val doSendMessageWithImage: (String, String, String, String) -> Unit = remember(viewModel) {
         { content, base64, mime, name -> viewModel.sendMessageWithImage(content, base64, mime, name) }
     }
+    val doSendMessageWithAttachments: (String, List<com.ameya.intelligence.domain.models.AppAttachment>) -> Unit = remember(viewModel) {
+        { content, atts -> viewModel.sendMessageWithAttachments(content, atts) }
+    }
     val doStopGeneration: () -> Unit = remember(viewModel) { { viewModel.stopGeneration() } }
     val doClearConversation: () -> Unit = remember(viewModel) { { viewModel.clearConversation() } }
     val doSelectModel: (String) -> Unit = remember(viewModel) { { viewModel.selectModel(it) } }
@@ -134,10 +137,7 @@ fun ChatScreen(
     val inputBarHeight = remember { mutableIntStateOf(0) }
     val conversationKey = uiState.conversationId.orEmpty()
     val composerKey = "${uiState.assistantMode}:${uiState.ownerId}:${uiState.agentId}:${uiState.conversationId}"
-    var attachedFilePath by remember(composerKey) { mutableStateOf<String?>(null) }
-    var attachedImageBase64 by remember(composerKey) { mutableStateOf<String?>(null) }
-    var attachedImageMimeType by remember(composerKey) { mutableStateOf<String?>(null) }
-    var attachedImageName by remember(composerKey) { mutableStateOf<String?>(null) }
+    var attachments by remember(composerKey) { mutableStateOf<List<com.ameya.intelligence.domain.models.AppAttachment>>(emptyList()) }
     var showConversationModeSheet by remember { mutableStateOf(false) }
     var showAgentMenu by remember { mutableStateOf(false) }
     var showDeleteAgentChatSheet by remember { mutableStateOf(false) }
@@ -156,31 +156,46 @@ fun ChatScreen(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                val resolvedPath = withContext(Dispatchers.IO) {
-                    var path: String? = null
+                val attachment = withContext(Dispatchers.IO) {
                     var fetchedFileName: String? = null
+                    var size = 0L
 
                     try {
-                        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                             if (cursor.moveToFirst()) {
-                                fetchedFileName = cursor.getString(0)
+                                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                if (nameIndex != -1) fetchedFileName = cursor.getString(nameIndex)
+                                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (sizeIndex != -1 && !cursor.isNull(sizeIndex)) {
+                                    size = cursor.getLong(sizeIndex)
+                                }
                             }
                         }
                     } catch (_: Exception) { }
 
                     val finalFileName = fetchedFileName ?: (uri.lastPathSegment?.substringAfterLast("/") ?: "file")
+                    val mimeType = context.contentResolver.getType(uri) ?: "*/*"
+                    
+                    val type = when {
+                        mimeType.startsWith("image/") -> com.ameya.intelligence.domain.models.AttachmentType.IMAGE
+                        mimeType.startsWith("video/") -> com.ameya.intelligence.domain.models.AttachmentType.VIDEO
+                        mimeType.startsWith("audio/") -> com.ameya.intelligence.domain.models.AttachmentType.AUDIO
+                        mimeType.startsWith("text/") || finalFileName.endsWith(".kt") || finalFileName.endsWith(".java") -> com.ameya.intelligence.domain.models.AttachmentType.CODE
+                        mimeType == "application/pdf" || mimeType.contains("document") || mimeType.contains("pdf") -> com.ameya.intelligence.domain.models.AttachmentType.DOCUMENT
+                        mimeType == "application/zip" || mimeType.contains("tar") || mimeType.contains("gzip") -> com.ameya.intelligence.domain.models.AttachmentType.ARCHIVE
+                        else -> com.ameya.intelligence.domain.models.AttachmentType.OTHER
+                    }
 
-                    val cacheFile = File(context.cacheDir, "attach_$finalFileName")
-                    try {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            cacheFile.outputStream().use { output -> input.copyTo(output) }
-                        }
-                        path = cacheFile.absolutePath
-                    } catch (_: Exception) { }
-
-                    path
+                    com.ameya.intelligence.domain.models.AppAttachment(uri, finalFileName, mimeType, size, type)
                 }
-                attachedFilePath = resolvedPath
+                
+                val newAttachments = attachments + attachment
+                val validation = com.ameya.intelligence.domain.models.AttachmentValidator.validateAttachments(newAttachments)
+                if (validation.isSuccess) {
+                    attachments = newAttachments
+                } else {
+                    android.widget.Toast.makeText(context, validation.exceptionOrNull()?.message ?: "Invalid attachment", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -188,70 +203,34 @@ fun ChatScreen(
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    try {
-                        val contentResolver = context.contentResolver
-                        val rawMimeType = contentResolver.getType(uri) ?: "image/*"
-                        var fetchedFileName: String? = null
+                val attachment = withContext(Dispatchers.IO) {
+                    var fetchedFileName: String? = null
+                    var size = 0L
 
-                        try {
-                            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                                if (cursor.moveToFirst()) {
-                                    fetchedFileName = cursor.getString(0)
+                    try {
+                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                if (nameIndex != -1) fetchedFileName = cursor.getString(nameIndex)
+                                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (sizeIndex != -1 && !cursor.isNull(sizeIndex)) {
+                                    size = cursor.getLong(sizeIndex)
                                 }
                             }
-                        } catch (_: Exception) { }
-
-                        val finalFileName = fetchedFileName ?: (uri.lastPathSegment?.substringAfterLast("/") ?: "image")
-
-                        val inputStream = contentResolver.openInputStream(uri)
-                        if (inputStream == null) return@withContext null
-
-                        val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                        inputStream.close()
-
-                        if (bitmap == null) return@withContext null
-
-                        val maxDim = 2048
-                        val width = bitmap.width
-                        val height = bitmap.height
-                        val scaledBitmap = if (width > maxDim || height > maxDim) {
-                            val scale = maxDim.toFloat() / maxOf(width, height)
-                            val newWidth = (width * scale).toInt()
-                            val newHeight = (height * scale).toInt()
-                            android.graphics.Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-                        } else {
-                            bitmap
                         }
+                    } catch (_: Exception) { }
 
-                        val maxBinarySize = 135_000 // ~135KB binary = ~180KB base64
-                        var quality = 85
-                        var bytes: ByteArray
-                        val outputStream = java.io.ByteArrayOutputStream()
+                    val finalFileName = fetchedFileName ?: (uri.lastPathSegment?.substringAfterLast("/") ?: "image")
+                    val mimeType = context.contentResolver.getType(uri) ?: "image/*"
 
-                        do {
-                            outputStream.reset()
-                            scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, outputStream)
-                            bytes = outputStream.toByteArray()
-                            quality -= 10
-                        } while (bytes.size > maxBinarySize && quality >= 30)
-
-                        outputStream.close()
-
-                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        if (scaledBitmap !== bitmap) scaledBitmap.recycle()
-                        bitmap.recycle()
-
-                        Triple(base64, "image/jpeg", finalFileName.removeSuffix(".png").removeSuffix(".webp") + ".jpg")
-                    } catch (e: Exception) {
-                        com.ameya.intelligence.util.errorLog("ChatScreen", "Image processing failed", e)
-                        null
-                    }
+                    com.ameya.intelligence.domain.models.AppAttachment(uri, finalFileName, mimeType, size, com.ameya.intelligence.domain.models.AttachmentType.IMAGE)
                 }
-                result?.let { (base64, mime, name) ->
-                    attachedImageBase64 = base64
-                    attachedImageMimeType = mime
-                    attachedImageName = name
+                val newAttachments = attachments + attachment
+                val validation = com.ameya.intelligence.domain.models.AttachmentValidator.validateAttachments(newAttachments)
+                if (validation.isSuccess) {
+                    attachments = newAttachments
+                } else {
+                    android.widget.Toast.makeText(context, validation.exceptionOrNull()?.message ?: "Invalid attachment", android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -514,10 +493,7 @@ fun ChatScreen(
                 connectionState = connectionState,
                 drawerOpen = drawerVisible,
                 bgColor = bgColor,
-                attachedFilePath = attachedFilePath,
-                attachedImageBase64 = attachedImageBase64,
-                attachedImageMimeType = attachedImageMimeType,
-                attachedImageName = attachedImageName,
+                attachments = attachments,
                 filePicker = filePicker,
                 imagePicker = imagePicker,
                 keyboardController = keyboardController,
@@ -525,12 +501,8 @@ fun ChatScreen(
                 onClearError = doClearError,
                 onSendMessage = doSendMessage,
                 supportsImages = selectedModelItem?.supportsImages == true,
-                onSendMessageWithImage = doSendMessageWithImage,
-                onClearImageAttachment = {
-                    attachedImageBase64 = null
-                    attachedImageMimeType = null
-                    attachedImageName = null
-                },
+                onSendMessageWithAttachments = doSendMessageWithAttachments,
+                onRemoveAttachment = { att -> attachments = attachments.filter { it != att } },
                 onStopGeneration = doStopGeneration,
                 onCancelCompactConversation = doCancelCompactConversation,
                 onNavigateToWorkspace = onNavigateToWorkspace,

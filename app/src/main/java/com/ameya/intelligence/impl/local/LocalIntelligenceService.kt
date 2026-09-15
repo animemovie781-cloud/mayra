@@ -423,7 +423,7 @@ class LocalIntelligenceService @Inject constructor(
     }
 
     override fun sendMessageWithImage(content: String, imageBase64: String, mimeType: String, fileName: String) {
-        if (!mimeType.startsWith("image/") || imageBase64.isBlank() || imageBase64.length > 1_000_000) {
+        if (!mimeType.startsWith("image/") || imageBase64.isBlank() || imageBase64.length > 25_000_000) { // Bumped image limit slightly, but ideally handled by the new path
             _uiState.update { it.copy(error = "Invalid or oversized image attachment") }
             return
         }
@@ -431,6 +431,51 @@ class LocalIntelligenceService @Inject constructor(
             content,
             listOf(com.ameya.intelligence.data.remote.api.ChatImage(imageBase64, mimeType, fileName))
         )
+    }
+
+    override fun sendMessageWithAttachments(content: String, attachments: List<com.ameya.intelligence.domain.models.AppAttachment>) {
+        val mappedImages = mutableListOf<com.ameya.intelligence.data.remote.api.ChatImage>()
+        val appendedText = StringBuilder()
+
+        for (att in attachments) {
+            val isText = att.type == com.ameya.intelligence.domain.models.AttachmentType.CODE || att.type == com.ameya.intelligence.domain.models.AttachmentType.DOCUMENT && att.mimeType?.startsWith("text/") == true
+            if (isText) {
+                try {
+                    val text = appContext.contentResolver.openInputStream(att.uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                    appendedText.append("\n\nAttached file: ${att.name}\n```\n$text\n```\n")
+                } catch (e: Exception) {
+                     _uiState.update { it.copy(error = "Failed to read text file: ${att.name}") }
+                     return
+                }
+            } else {
+                // Map binary attachments to ChatImage (Base64)
+                try {
+                    val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        mappedImages.add(com.ameya.intelligence.data.remote.api.ChatImage(base64, att.mimeType ?: "*/*", att.name))
+                    }
+                } catch (e: OutOfMemoryError) {
+                    _uiState.update { it.copy(error = "File ${att.name} is too large to process in memory") }
+                    return
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = "Failed to process binary file: ${att.name}") }
+                    return
+                }
+            }
+        }
+
+        if (mappedImages.isEmpty() && appendedText.isEmpty() && attachments.isNotEmpty()) {
+             _uiState.update { it.copy(error = "Failed to process attachments") }
+             return
+        }
+
+        val finalContent = buildString {
+            append(content)
+            append(appendedText.toString())
+        }.trim()
+
+        sendMessageInternal(finalContent, mappedImages)
     }
 
     private fun sendMessageInternal(

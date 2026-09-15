@@ -50,13 +50,10 @@ fun ChatInput(
     isCompressing: Boolean = false,
     /** Host-driven compaction mid-turn. Shows the pill but never arms the cancel affordance. */
     isAutoCompacting: Boolean = false,
-    attachedFilePath: String? = null,
-    attachedImageBase64: String? = null,
-    attachedImageName: String? = null,
+    attachments: List<com.ameya.intelligence.domain.models.AppAttachment> = emptyList(),
     onAttachFile: () -> Unit = {},
     onAttachImage: (() -> Unit)? = null,
-    onClearAttachment: () -> Unit = {},
-    onClearImageAttachment: () -> Unit = {},
+    onRemoveAttachment: (com.ameya.intelligence.domain.models.AppAttachment) -> Unit = {},
     conversationMode: ConversationMode = ConversationMode.PLANNING,
     conversationModeLabel: String? = null,
     conversationModeIsFast: Boolean = conversationMode == ConversationMode.FAST,
@@ -82,7 +79,7 @@ fun ChatInput(
     onStopGeneration: () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
-    val hasAttachment = attachedFilePath != null || attachedImageBase64 != null
+    val hasAttachment = attachments.isNotEmpty()
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val referenceColor = MaterialTheme.colorScheme.primary
@@ -196,23 +193,23 @@ fun ChatInput(
             }
         }
 
-        // Attached file pill
-        if (attachedFilePath != null) {
-            val fileName = attachedFilePath.substringAfterLast("/")
+        // Attached file/image pills
+        attachments.forEach { attachment ->
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.padding(start = 4.dp)
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Icon(Icons.Default.AttachFile, contentDescription = null,
+                    val icon = if (attachment.type == com.ameya.intelligence.domain.models.AttachmentType.IMAGE) Icons.Default.Image else Icons.Default.AttachFile
+                    Icon(icon, contentDescription = null,
                         modifier = Modifier.size(13.dp),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(text = fileName,
+                    Text(text = attachment.name,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -220,41 +217,7 @@ fun ChatInput(
                     Box(
                         modifier = Modifier.size(14.dp).clip(CircleShape)
                             .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
-                            .clickable { onClearAttachment() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Remove",
-                            modifier = Modifier.size(9.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-        }
-
-        // Attached image pill
-        if (attachedImageBase64 != null) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.padding(start = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Default.Image, contentDescription = null,
-                        modifier = Modifier.size(13.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(text = attachedImageName ?: "Image",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 200.dp))
-                    Box(
-                        modifier = Modifier.size(14.dp).clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.15f))
-                            .clickable { onClearImageAttachment() },
+                            .clickable { onRemoveAttachment(attachment) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Remove",

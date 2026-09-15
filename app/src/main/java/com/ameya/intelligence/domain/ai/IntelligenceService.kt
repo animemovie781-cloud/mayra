@@ -24,6 +24,15 @@ interface IntelligenceService {
     fun sendMessageWithImage(content: String, imageBase64: String, mimeType: String, fileName: String) {
         error("Image input is not supported by this intelligence service")
     }
+    fun sendMessageWithAttachments(content: String, attachments: List<AppAttachment>) {
+        // Default backward-compatible fallback for providers not updated yet
+        val firstImage = attachments.firstOrNull { it.type == AttachmentType.IMAGE }
+        if (firstImage != null && firstImage.base64 != null) {
+            sendMessageWithImage(content, firstImage.base64, firstImage.mimeType ?: "image/*", firstImage.name)
+        } else {
+            error("General file attachments are not supported by this intelligence service")
+        }
+    }
     fun stopGeneration()
     fun clearConversation()
     fun loadConversation(id: String)

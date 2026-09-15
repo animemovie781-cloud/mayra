@@ -25,6 +25,7 @@ import javax.inject.Singleton
 @Singleton
 class AntigravityIntelligenceService @Inject constructor(
     private val client: RemoteSessionClient,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     @ApplicationScope private val scope: CoroutineScope
 ) : IntelligenceService {
 
@@ -119,6 +120,58 @@ class AntigravityIntelligenceService @Inject constructor(
             role = MessageRole.USER,
             content = content,
             attachments = listOf(MessageAttachment(mimeType, imageBase64, fileName))
+        )
+        _uiState.update { it.copy(messages = it.messages + userMsg, isLoading = true) }
+    }
+
+    override fun sendMessageWithAttachments(content: String, attachments: List<com.ameya.intelligence.domain.models.AppAttachment>) {
+        val activeId = _uiState.value.conversationId
+        val mode = _uiState.value.conversationMode.wireValue
+
+        val remoteAttachments = mutableListOf<RemoteAttachment>()
+        val appendedText = StringBuilder()
+
+        for (att in attachments) {
+            val isText = att.type == com.ameya.intelligence.domain.models.AttachmentType.CODE || att.type == com.ameya.intelligence.domain.models.AttachmentType.DOCUMENT && att.mimeType?.startsWith("text/") == true
+            if (isText) {
+                try {
+                    val text = appContext.contentResolver.openInputStream(att.uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                    appendedText.append("\n\nAttached file: ${att.name}\n```\n$text\n```\n")
+                } catch (e: Exception) {
+                    // Ignore text errors here or just pass through
+                }
+            } else {
+                try {
+                    val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() } ?: ByteArray(0)
+                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    remoteAttachments.add(RemoteAttachment(att.mimeType ?: "*/*", base64, att.name))
+                } catch (e: OutOfMemoryError) {
+                    _uiState.update { it.copy(error = "File ${att.name} is too large to process in memory") }
+                    return
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = "Failed to process binary file: ${att.name}") }
+                    return
+                }
+            }
+        }
+
+        val finalContent = buildString {
+            append(content)
+            append(appendedText.toString())
+        }.trim()
+
+        activeId?.let { locallyStoppedConversations.remove(it) }
+        AntigravityRemoteDebugLog.handlerNote("SERVICE_SEND_ATTACHMENTS", "text len=${finalContent.length} cid=${activeId ?: "-"} mode=$mode attachments=${remoteAttachments.size}")
+        client.sendMessage(finalContent, activeId, mode, remoteAttachments)
+
+        // Optimistic update
+        val uiAttachments = remoteAttachments.map {
+            MessageAttachment(it.mimeType, it.dataBase64, it.fileName)
+        }
+        val userMsg = UiMessage(
+            role = MessageRole.USER,
+            content = finalContent,
+            attachments = uiAttachments
         )
         _uiState.update { it.copy(messages = it.messages + userMsg, isLoading = true) }
     }

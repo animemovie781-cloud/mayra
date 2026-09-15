@@ -122,6 +122,11 @@ class ChatViewModel @Inject constructor(
         intelligenceService.sendMessageWithImage(content, imageBase64, mimeType, fileName)
     }
 
+    fun sendMessageWithAttachments(content: String, attachments: List<com.ameya.intelligence.domain.models.AppAttachment>) {
+        _scrollEvent.tryEmit(ScrollReason.NEW_MESSAGE)
+        intelligenceService.sendMessageWithAttachments(content, attachments)
+    }
+
     fun stopGeneration() {
         intelligenceService.stopGeneration()
     }
