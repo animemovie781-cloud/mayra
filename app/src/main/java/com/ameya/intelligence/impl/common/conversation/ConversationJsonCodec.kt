@@ -116,10 +116,12 @@ object ConversationJsonCodec {
                         val attachment = array.optJSONObject(index) ?: return@mapNotNull null
                         val mime = attachment.optString("mimeType")
                         val data = attachment.optString("dataBase64")
-                        if (mime.isBlank() || data.isBlank()) null else MessageAttachment(
+                        val localUri = attachment.optString("localUri").takeIf { it.isNotBlank() }
+                        if (mime.isBlank() && data.isBlank() && localUri == null) null else MessageAttachment(
                             mimeType = mime,
                             dataBase64 = data,
-                            fileName = attachment.optString("fileName")
+                            fileName = attachment.optString("fileName"),
+                            localUri = localUri
                         )
                     }
                 }.orEmpty()
@@ -166,10 +168,12 @@ object ConversationJsonCodec {
                 if (msg.attachments.isNotEmpty()) {
                     put("attachments", JSONArray().apply {
                         msg.attachments.forEach { attachment ->
-                            put(JSONObject()
+                            val attObj = JSONObject()
                                 .put("mimeType", attachment.mimeType)
                                 .put("dataBase64", attachment.dataBase64)
-                                .put("fileName", attachment.fileName))
+                                .put("fileName", attachment.fileName)
+                            attachment.localUri?.let { attObj.put("localUri", it) }
+                            put(attObj)
                         }
                     })
                 }

@@ -281,7 +281,8 @@ internal fun List<MessageStep>.finishThinking(nowMs: Long = System.currentTimeMi
 data class MessageAttachment(
     val mimeType: String,
     val dataBase64: String,
-    val fileName: String = ""
+    val fileName: String = "",
+    val localUri: String? = null
 )
 
 // ── Tool Execution ───────────────────────────────────────────────────────────

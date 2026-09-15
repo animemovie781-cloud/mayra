@@ -68,7 +68,8 @@ data class ChatMessage(
 data class ChatImage(
     val base64: String,
     val mediaType: String,
-    val fileName: String = ""
+    val fileName: String = "",
+    val localUri: String? = null
 )
 
 enum class MessageRole {

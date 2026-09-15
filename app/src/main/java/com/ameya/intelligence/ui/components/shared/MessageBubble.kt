@@ -71,27 +71,33 @@ fun MessageBubble(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         imageAttachments.forEach { attachment ->
-                            val bitmap = remember(attachment.dataBase64) {
-                                try {
-                                    val bytes = Base64.decode(attachment.dataBase64, Base64.DEFAULT)
-                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                } catch (_: Exception) { null }
-                            }
-                            
-                            if (bitmap != null) {
-                                Image(
-                                    bitmap = bitmap.asImageBitmap(),
+                            if (!attachment.localUri.isNullOrBlank()) {
+                                coil.compose.AsyncImage(
+                                    model = attachment.localUri,
                                     contentDescription = attachment.fileName.ifBlank { "Attached image" },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 200.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(RoundedCornerShape(12.dp)),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                 )
+                            } else if (attachment.dataBase64.isNotBlank()) {
+                                val bitmap = remember(attachment.dataBase64) {
+                                    try {
+                                        val bytes = Base64.decode(attachment.dataBase64, Base64.DEFAULT)
+                                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                    } catch (_: Exception) { null }
+                                }
+                                
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap.asImageBitmap(),
+                                        contentDescription = attachment.fileName.ifBlank { "Attached image" },
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).clip(RoundedCornerShape(12.dp))
+                                    )
+                                }
                             }
+                        }
                         }
                     }
                 }
-            }
             
             val delegationSource = message.metadata["sourceAgentName"]
                 ?.takeIf { message.metadata["delegation"] == "incoming" }

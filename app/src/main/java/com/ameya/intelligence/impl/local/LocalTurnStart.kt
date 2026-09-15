@@ -48,7 +48,7 @@ internal suspend fun LocalIntelligenceService.startTurn(
         val userMsg = UiMessage(
             role = if (internalContinuation) MessageRole.SYSTEM else MessageRole.USER,
             content = trimmedContent,
-            attachments = images.map { MessageAttachment(it.mediaType, it.base64, it.fileName) },
+            attachments = images.map { MessageAttachment(it.mediaType, "", it.fileName, it.localUri) },
             metadata = if (internalContinuation) mapOf("internalContinuation" to "true") else emptyMap()
         )
         val turnState = initialState.copy(

@@ -137,10 +137,13 @@ class AntigravityIntelligenceService @Inject constructor(
                 try {
                     val text = appContext.contentResolver.openInputStream(att.uri)?.bufferedReader()?.use { it.readText() } ?: ""
                     appendedText.append("\n\nAttached file: ${att.name}\n```\n$text\n```\n")
+                } catch (e: OutOfMemoryError) {
+                    _uiState.update { it.copy(error = "Text file ${att.name} is too large to process in memory") }
+                    return
                 } catch (e: Exception) {
                     // Ignore text errors here or just pass through
                 }
-            } else {
+            } else if (att.type == com.ameya.intelligence.domain.models.AttachmentType.IMAGE) {
                 try {
                     val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() } ?: ByteArray(0)
                     val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
@@ -149,9 +152,12 @@ class AntigravityIntelligenceService @Inject constructor(
                     _uiState.update { it.copy(error = "File ${att.name} is too large to process in memory") }
                     return
                 } catch (e: Exception) {
-                    _uiState.update { it.copy(error = "Failed to process binary file: ${att.name}") }
+                    _uiState.update { it.copy(error = "Failed to process image: ${att.name}") }
                     return
                 }
+            } else {
+                _uiState.update { it.copy(error = "File type ${att.mimeType} is not supported by this AI provider") }
+                return
             }
         }
 
@@ -165,8 +171,8 @@ class AntigravityIntelligenceService @Inject constructor(
         client.sendMessage(finalContent, activeId, mode, remoteAttachments)
 
         // Optimistic update
-        val uiAttachments = remoteAttachments.map {
-            MessageAttachment(it.mimeType, it.dataBase64, it.fileName)
+        val uiAttachments = attachments.filter { it.type == com.ameya.intelligence.domain.models.AttachmentType.IMAGE }.map {
+            MessageAttachment(it.mimeType ?: "*/*", "", it.name, it.uri.toString())
         }
         val userMsg = UiMessage(
             role = MessageRole.USER,

@@ -443,25 +443,36 @@ class LocalIntelligenceService @Inject constructor(
                 try {
                     val text = appContext.contentResolver.openInputStream(att.uri)?.bufferedReader()?.use { it.readText() } ?: ""
                     appendedText.append("\n\nAttached file: ${att.name}\n```\n$text\n```\n")
+                } catch (e: OutOfMemoryError) {
+                     _uiState.update { it.copy(error = "Text file ${att.name} is too large to process in memory") }
+                     return
                 } catch (e: Exception) {
                      _uiState.update { it.copy(error = "Failed to read text file: ${att.name}") }
                      return
                 }
-            } else {
+            } else if (att.type == com.ameya.intelligence.domain.models.AttachmentType.IMAGE) {
                 // Map binary attachments to ChatImage (Base64)
                 try {
                     val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() }
                     if (bytes != null) {
                         val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        mappedImages.add(com.ameya.intelligence.data.remote.api.ChatImage(base64, att.mimeType ?: "*/*", att.name))
+                        mappedImages.add(com.ameya.intelligence.data.remote.api.ChatImage(
+                            base64 = base64,
+                            mediaType = att.mimeType ?: "*/*",
+                            fileName = att.name,
+                            localUri = att.uri.toString()
+                        ))
                     }
                 } catch (e: OutOfMemoryError) {
                     _uiState.update { it.copy(error = "File ${att.name} is too large to process in memory") }
                     return
                 } catch (e: Exception) {
-                    _uiState.update { it.copy(error = "Failed to process binary file: ${att.name}") }
+                    _uiState.update { it.copy(error = "Failed to process image: ${att.name}") }
                     return
                 }
+            } else {
+                _uiState.update { it.copy(error = "File type ${att.mimeType} is not supported by this AI provider") }
+                return
             }
         }
 

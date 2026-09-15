@@ -111,10 +111,12 @@ internal fun parseMessagesFromJson(json: String, includeModelState: Boolean = tr
                         val attachment = array.optJSONObject(index) ?: return@mapNotNull null
                         val mime = attachment.optString("mimeType")
                         val data = attachment.optString("dataBase64")
-                        if (mime.isBlank() || data.isBlank()) null else MessageAttachment(
+                        val localUri = attachment.optString("localUri").takeIf { it.isNotBlank() }
+                        if (mime.isBlank() && data.isBlank() && localUri == null) null else MessageAttachment(
                             mimeType = mime,
                             dataBase64 = data,
-                            fileName = attachment.optString("fileName")
+                            fileName = attachment.optString("fileName"),
+                            localUri = localUri
                         )
                     }
                 }.orEmpty()
