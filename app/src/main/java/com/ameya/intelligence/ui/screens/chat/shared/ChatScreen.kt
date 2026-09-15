@@ -158,22 +158,26 @@ fun ChatScreen(
             scope.launch {
                 val resolvedPath = withContext(Dispatchers.IO) {
                     var path: String? = null
+                    var fetchedFileName: String? = null
+
                     try {
-                        context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use { cursor ->
-                            if (cursor.moveToFirst()) path = cursor.getString(0)
+                        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                fetchedFileName = cursor.getString(0)
+                            }
                         }
                     } catch (_: Exception) { }
 
-                    if (path == null) {
-                        val fileName = uri.lastPathSegment?.substringAfterLast("/") ?: "file"
-                        val cacheFile = File(context.cacheDir, "attach_$fileName")
-                        try {
-                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                cacheFile.outputStream().use { output -> input.copyTo(output) }
-                            }
-                            path = cacheFile.absolutePath
-                        } catch (_: Exception) { }
-                    }
+                    val finalFileName = fetchedFileName ?: (uri.lastPathSegment?.substringAfterLast("/") ?: "file")
+
+                    val cacheFile = File(context.cacheDir, "attach_$finalFileName")
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            cacheFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        path = cacheFile.absolutePath
+                    } catch (_: Exception) { }
+
                     path
                 }
                 attachedFilePath = resolvedPath
@@ -188,7 +192,17 @@ fun ChatScreen(
                     try {
                         val contentResolver = context.contentResolver
                         val rawMimeType = contentResolver.getType(uri) ?: "image/*"
-                        val fileName = uri.lastPathSegment?.substringAfterLast("/") ?: "image"
+                        var fetchedFileName: String? = null
+
+                        try {
+                            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                                if (cursor.moveToFirst()) {
+                                    fetchedFileName = cursor.getString(0)
+                                }
+                            }
+                        } catch (_: Exception) { }
+
+                        val finalFileName = fetchedFileName ?: (uri.lastPathSegment?.substringAfterLast("/") ?: "image")
 
                         val inputStream = contentResolver.openInputStream(uri)
                         if (inputStream == null) return@withContext null
@@ -228,7 +242,7 @@ fun ChatScreen(
                         if (scaledBitmap !== bitmap) scaledBitmap.recycle()
                         bitmap.recycle()
 
-                        Triple(base64, "image/jpeg", fileName.removeSuffix(".png").removeSuffix(".webp") + ".jpg")
+                        Triple(base64, "image/jpeg", finalFileName.removeSuffix(".png").removeSuffix(".webp") + ".jpg")
                     } catch (e: Exception) {
                         com.ameya.intelligence.util.errorLog("ChatScreen", "Image processing failed", e)
                         null
