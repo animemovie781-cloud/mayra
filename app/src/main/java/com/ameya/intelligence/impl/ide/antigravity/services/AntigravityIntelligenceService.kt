@@ -145,9 +145,13 @@ class AntigravityIntelligenceService @Inject constructor(
                 }
             } else if (att.type == com.ameya.intelligence.domain.models.AttachmentType.IMAGE) {
                 try {
-                    val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() } ?: ByteArray(0)
-                    val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    remoteAttachments.add(RemoteAttachment(att.mimeType ?: "*/*", base64, att.name))
+                    val base64 = com.ameya.intelligence.util.ImageCompressionUtils.getCompressedBase64(appContext, att.uri)
+                    if (base64 != null) {
+                        remoteAttachments.add(RemoteAttachment("image/jpeg", base64, att.name))
+                    } else {
+                        _uiState.update { it.copy(error = "Failed to process image or image is too large: ${att.name}") }
+                        return
+                    }
                 } catch (e: OutOfMemoryError) {
                     _uiState.update { it.copy(error = "File ${att.name} is too large to process in memory") }
                     return

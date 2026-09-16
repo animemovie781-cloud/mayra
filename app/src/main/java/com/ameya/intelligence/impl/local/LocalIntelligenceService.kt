@@ -453,15 +453,17 @@ class LocalIntelligenceService @Inject constructor(
             } else if (att.type == com.ameya.intelligence.domain.models.AttachmentType.IMAGE) {
                 // Map binary attachments to ChatImage (Base64)
                 try {
-                    val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    val base64 = com.ameya.intelligence.util.ImageCompressionUtils.getCompressedBase64(appContext, att.uri)
+                    if (base64 != null) {
                         mappedImages.add(com.ameya.intelligence.data.remote.api.ChatImage(
                             base64 = base64,
-                            mediaType = att.mimeType ?: "*/*",
+                            mediaType = "image/jpeg",
                             fileName = att.name,
                             localUri = att.uri.toString()
                         ))
+                    } else {
+                        _uiState.update { it.copy(error = "Failed to process image or image is too large: ${att.name}") }
+                        return
                     }
                 } catch (e: OutOfMemoryError) {
                     _uiState.update { it.copy(error = "File ${att.name} is too large to process in memory") }
