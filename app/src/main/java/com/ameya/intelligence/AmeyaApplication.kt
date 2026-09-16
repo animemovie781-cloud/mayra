@@ -24,9 +24,33 @@ class AmeyaApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        
+        setupCrashHandler()
+
         // Apply theme synchronously before any Activity starts so that
         // window background, predictive back, and transitions use correct colours.
         applyThemeFromSettings()
+    }
+
+    private fun setupCrashHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
+            val processName = android.app.Application.getProcessName()
+            if (processName.endsWith(":crash")) {
+                defaultHandler?.uncaughtException(thread, exception)
+                return@setDefaultUncaughtExceptionHandler
+            }
+
+            val stackTrace = android.util.Log.getStackTraceString(exception)
+            val intent = android.content.Intent(this, com.ameya.intelligence.ui.activities.crash.CrashActivity::class.java).apply {
+                putExtra("crash_log", stackTrace)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(intent)
+            
+            android.os.Process.killProcess(android.os.Process.myPid())
+            System.exit(1)
+        }
     }
 
     /**
