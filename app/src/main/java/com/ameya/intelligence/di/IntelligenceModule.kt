@@ -117,6 +117,8 @@ object IntelligenceModule {
             override fun sendMessage(content: String) = active.sendMessage(content)
             override fun sendMessageWithImage(content: String, imageBase64: String, mimeType: String, fileName: String) =
                 active.sendMessageWithImage(content, imageBase64, mimeType, fileName)
+            override fun sendMessageWithAttachments(content: String, attachments: List<com.ameya.intelligence.domain.models.AppAttachment>) =
+                active.sendMessageWithAttachments(content, attachments)
             override fun stopGeneration() = active.stopGeneration()
             override fun clearConversation() = active.clearConversation()
             override fun loadConversation(id: String) = active.loadConversation(id)

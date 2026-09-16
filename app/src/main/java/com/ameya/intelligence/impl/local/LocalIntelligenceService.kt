@@ -436,9 +436,31 @@ class LocalIntelligenceService @Inject constructor(
     override fun sendMessageWithAttachments(content: String, attachments: List<com.ameya.intelligence.domain.models.AppAttachment>) {
         val mappedImages = mutableListOf<com.ameya.intelligence.data.remote.api.ChatImage>()
         val appendedText = StringBuilder()
+        
+        val activeModelKey = _uiState.value.activeModelKey
+        val isGemini = activeModelKey.startsWith("gemini|")
 
         for (att in attachments) {
-            val isText = att.type == com.ameya.intelligence.domain.models.AttachmentType.CODE || att.type == com.ameya.intelligence.domain.models.AttachmentType.DOCUMENT && att.mimeType?.startsWith("text/") == true
+            val mime = att.mimeType ?: ""
+            val nameLower = att.name.lowercase()
+            val isText = att.type == com.ameya.intelligence.domain.models.AttachmentType.CODE || 
+                mime.startsWith("text/") ||
+                mime == "application/json" ||
+                mime == "application/xml" ||
+                mime == "application/javascript" ||
+                mime == "application/x-javascript" ||
+                mime == "application/xhtml+xml" ||
+                nameLower.endsWith(".md") ||
+                nameLower.endsWith(".json") ||
+                nameLower.endsWith(".xml") ||
+                nameLower.endsWith(".kt") ||
+                nameLower.endsWith(".java") ||
+                nameLower.endsWith(".js") ||
+                nameLower.endsWith(".ts") ||
+                nameLower.endsWith(".html") ||
+                nameLower.endsWith(".css") ||
+                nameLower.endsWith(".txt")
+                
             if (isText) {
                 try {
                     val text = appContext.contentResolver.openInputStream(att.uri)?.bufferedReader()?.use { it.readText() } ?: ""
@@ -470,6 +492,28 @@ class LocalIntelligenceService @Inject constructor(
                     return
                 } catch (e: Exception) {
                     _uiState.update { it.copy(error = "Failed to process image: ${att.name}") }
+                    return
+                }
+            } else if (mime == "application/pdf" && isGemini) {
+                try {
+                    val bytes = appContext.contentResolver.openInputStream(att.uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        mappedImages.add(com.ameya.intelligence.data.remote.api.ChatImage(
+                            base64 = base64,
+                            mediaType = "application/pdf",
+                            fileName = att.name,
+                            localUri = att.uri.toString()
+                        ))
+                    } else {
+                        _uiState.update { it.copy(error = "Failed to read PDF: ${att.name}") }
+                        return
+                    }
+                } catch (e: OutOfMemoryError) {
+                    _uiState.update { it.copy(error = "PDF file ${att.name} is too large to process in memory") }
+                    return
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = "Failed to process PDF: ${att.name}") }
                     return
                 }
             } else {
