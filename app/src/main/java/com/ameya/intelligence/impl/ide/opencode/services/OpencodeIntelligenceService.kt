@@ -155,6 +155,14 @@ class OpencodeIntelligenceService @Inject constructor(
         scheduleSend(trimmed)
     }
 
+    override fun sendMessageWithImage(content: String, imageBase64: String, mimeType: String, fileName: String) {
+        _uiState.update { it.copy(error = "Image attachments are not supported by the Opencode agent.") }
+    }
+
+    override fun sendMessageWithAttachments(content: String, attachments: List<com.ameya.intelligence.domain.models.AppAttachment>) {
+        _uiState.update { it.copy(error = "General file attachments are not supported by the Opencode agent.") }
+    }
+
     override fun stopGeneration() {
         val session = activeSessionId ?: return
         opencodeClient.abortPrompt(session)
